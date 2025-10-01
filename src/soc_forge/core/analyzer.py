@@ -1,0 +1,344 @@
+"""
+Core IP Analyzer
+Orchestrates analysis across multiple threat intelligence sources
+"""
+
+import asyncio
+import concurrent.futures
+from typing import Dict, List, Any, Optional
+import logging
+from dataclasses import dataclass
+import time
+
+from ..apis.virustotal import VirusTotalClient
+from ..apis.abuseipdb import AbuseIPDBClient
+from ..apis.ipinfo import IPInfoClient
+from ..apis.threatfox import ThreatFoxClient
+from ..apis.greynoise import GreyNoiseClient
+from ..apis.shodan import ShodanClient
+from ..apis.otx import OTXClient
+from ..apis.base import APIResult
+from ..utils.threat_scoring import ThreatScorer
+from ..feeds import ThreatFeedManager, DNSBLChecker
+
+
+@dataclass
+class AnalysisResult:
+    """Complete analysis result for an IP"""
+    ip: str
+    analysis_time_ms: int
+    success: bool
+    error: Optional[str]
+    sources_queried: List[str]
+    sources_successful: List[str]
+    data: Dict[str, Any]
+
+
+class IPAnalyzer:
+    """Core IP analysis engine"""
+    
+    def __init__(self, api_keys: Dict[str, str], max_workers: int = 5, enable_feeds: bool = True):
+        self.logger = logging.getLogger("soc_forge.analyzer")
+        self.max_workers = max_workers
+
+        # Initialize API clients
+        self.clients = {}
+
+        if api_keys.get('virustotal'):
+            self.clients['virustotal'] = VirusTotalClient(api_keys['virustotal'])
+
+        if api_keys.get('abuseipdb'):
+            self.clients['abuseipdb'] = AbuseIPDBClient(api_keys['abuseipdb'])
+
+        if api_keys.get('ipinfo'):
+            self.clients['ipinfo'] = IPInfoClient(api_keys['ipinfo'])
+
+        # ThreatFox requires authentication now - only enable if key is provided
+        if api_keys.get('threatfox'):
+            self.clients['threatfox'] = ThreatFoxClient(api_keys['threatfox'])
+
+        if api_keys.get('greynoise'):
+            self.clients['greynoise'] = GreyNoiseClient(api_keys['greynoise'])
+
+        if api_keys.get('shodan'):
+            self.clients['shodan'] = ShodanClient(api_keys['shodan'])
+
+        if api_keys.get('otx'):
+            self.clients['otx'] = OTXClient(api_keys['otx'])
+
+        # Initialize threat feed manager and DNSBL checker
+        self.feed_manager = None
+        self.dnsbl_checker = None
+
+        if enable_feeds:
+            try:
+                self.feed_manager = ThreatFeedManager()
+                self.dnsbl_checker = DNSBLChecker(timeout=2.0, max_workers=10)
+                self.logger.info("Initialized threat feed manager and DNSBL checker")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize feeds: {e}")
+
+        self.logger.info(f"Initialized analyzer with {len(self.clients)} API sources")
+    
+    def analyze_single_ip(self, ip: str, sources: Optional[List[str]] = None, check_feeds: bool = True) -> AnalysisResult:
+        """
+        Analyze a single IP across specified sources
+
+        Args:
+            ip: IP address to analyze
+            sources: List of sources to query (None = all available)
+            check_feeds: Whether to check threat feeds and DNSBLs
+
+        Returns:
+            AnalysisResult with complete analysis data
+        """
+        start_time = time.time()
+
+        if sources is None:
+            sources = list(self.clients.keys())
+
+        # Filter to available clients
+        sources = [s for s in sources if s in self.clients]
+
+        if not sources and not check_feeds:
+            return AnalysisResult(
+                ip=ip,
+                analysis_time_ms=0,
+                success=False,
+                error="No API sources available",
+                sources_queried=[],
+                sources_successful=[],
+                data={}
+            )
+
+        results = {}
+        successful_sources = []
+
+        # Query each source
+        for source in sources:
+            try:
+                client = self.clients[source]
+                result = client.check_ip(ip)
+
+                if result.success:
+                    results[source] = result.data
+                    successful_sources.append(source)
+                    self.logger.debug(f"Successfully queried {source} for {ip}")
+                else:
+                    self.logger.warning(f"Failed to query {source} for {ip}: {result.error}")
+                    results[source] = {"error": result.error, "success": False}
+
+            except Exception as e:
+                self.logger.error(f"Exception querying {source} for {ip}: {str(e)}")
+                results[source] = {"error": str(e), "success": False}
+
+        # Check threat feeds and DNSBLs if enabled
+        if check_feeds:
+            # Check threat feeds
+            if self.feed_manager:
+                try:
+                    feed_results = self.feed_manager.check_indicator(ip, feed_types=['ip'])
+                    results['threat_feeds'] = {
+                        'found': len(feed_results['found_in']) > 0,
+                        'feed_count': len(feed_results['found_in']),
+                        'feeds': feed_results['found_in'],
+                        'categories': feed_results['categories'],
+                        'threat_level': feed_results['threat_level'],
+                        'total_feeds_checked': feed_results['total_feeds_checked']
+                    }
+                    successful_sources.append('threat_feeds')
+                    self.logger.debug(f"Checked {ip} against threat feeds: {feed_results['threat_level']}")
+                except Exception as e:
+                    self.logger.error(f"Error checking threat feeds for {ip}: {e}")
+                    results['threat_feeds'] = {'error': str(e), 'found': False}
+
+            # Check DNSBLs
+            if self.dnsbl_checker:
+                try:
+                    dnsbl_results = self.dnsbl_checker.check_ip(ip)
+                    results['dnsbl'] = {
+                        'found': dnsbl_results['total_listings'] > 0,
+                        'listing_count': dnsbl_results['total_listings'],
+                        'listings': dnsbl_results['listed_in'],
+                        'categories': dnsbl_results['categories'],
+                        'threat_level': dnsbl_results['threat_level'],
+                        'is_whitelisted': dnsbl_results['is_whitelisted'],
+                        'total_checked': dnsbl_results['total_checked']
+                    }
+                    successful_sources.append('dnsbl')
+                    self.logger.debug(f"Checked {ip} against DNSBLs: {dnsbl_results['threat_level']}")
+                except Exception as e:
+                    self.logger.error(f"Error checking DNSBLs for {ip}: {e}")
+                    results['dnsbl'] = {'error': str(e), 'found': False}
+
+        analysis_time_ms = int((time.time() - start_time) * 1000)
+
+        return AnalysisResult(
+            ip=ip,
+            analysis_time_ms=analysis_time_ms,
+            success=len(successful_sources) > 0,
+            error=None if successful_sources else "All sources failed",
+            sources_queried=sources + (['threat_feeds', 'dnsbl'] if check_feeds else []),
+            sources_successful=successful_sources,
+            data=results
+        )
+    
+    def analyze_multiple_ips(self, ips: List[str], 
+                           sources: Optional[List[str]] = None) -> Dict[str, AnalysisResult]:
+        """
+        Analyze multiple IPs concurrently
+        
+        Args:
+            ips: List of IP addresses to analyze
+            sources: List of sources to query (None = all available)
+            
+        Returns:
+            Dictionary mapping IP addresses to AnalysisResults
+        """
+        start_time = time.time()
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all analysis tasks
+            future_to_ip = {
+                executor.submit(self.analyze_single_ip, ip, sources): ip 
+                for ip in ips
+            }
+            
+            results = {}
+            completed = 0
+            
+            for future in concurrent.futures.as_completed(future_to_ip):
+                ip = future_to_ip[future]
+                try:
+                    result = future.result()
+                    results[ip] = result
+                    completed += 1
+                    
+                    self.logger.info(f"Completed analysis for {ip} ({completed}/{len(ips)})")
+                    
+                except Exception as e:
+                    self.logger.error(f"Analysis failed for {ip}: {str(e)}")
+                    results[ip] = AnalysisResult(
+                        ip=ip,
+                        analysis_time_ms=0,
+                        success=False,
+                        error=str(e),
+                        sources_queried=sources or [],
+                        sources_successful=[],
+                        data={}
+                    )
+        
+        total_time = time.time() - start_time
+        self.logger.info(f"Completed analysis of {len(ips)} IPs in {total_time:.2f}s")
+        
+        return results
+    
+    def quick_reputation_check(self, ips: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Quick reputation check focusing on fast sources
+        
+        Args:
+            ips: List of IP addresses to check
+            
+        Returns:
+            Dictionary with quick reputation results
+        """
+        # Use fast sources for quick checks
+        quick_sources = []
+        
+        if 'greynoise' in self.clients:
+            quick_sources.append('greynoise')
+        if 'abuseipdb' in self.clients:
+            quick_sources.append('abuseipdb')
+        
+        if not quick_sources:
+            return {}
+        
+        results = self.analyze_multiple_ips(ips, quick_sources)
+        
+        # Simplify results for quick assessment
+        quick_results = {}
+        for ip, result in results.items():
+            threat_score = ThreatScorer.calculate_ip_threat_score(result.data)
+            threat_level = ThreatScorer.get_threat_level(threat_score)
+
+            quick_results[ip] = {
+                'threat_level': threat_level,
+                'threat_score': threat_score,
+                'sources_checked': result.sources_successful,
+                'analysis_time_ms': result.analysis_time_ms,
+                'key_findings': ThreatScorer.extract_key_findings(result.data)
+            }
+
+        return quick_results
+    
+    
+    def get_available_sources(self) -> List[str]:
+        """Get list of available API sources"""
+        return list(self.clients.keys())
+    
+    def test_api_connections(self) -> Dict[str, bool]:
+        """Test connectivity to all configured APIs"""
+        results = {}
+        
+        for source, client in self.clients.items():
+            try:
+                # Simple connectivity test
+                test_result = client.test_connection()
+                results[source] = test_result.success
+            except Exception:
+                results[source] = False
+        
+        return results
+    
+    def get_source_statistics(self) -> Dict[str, Dict[str, Any]]:
+        """Get statistics about API usage and performance"""
+        # This would be enhanced with actual usage tracking
+        stats = {}
+
+        for source in self.clients.keys():
+            stats[source] = {
+                'available': True,
+                'last_used': None,  # Would track actual usage
+                'success_rate': None,  # Would calculate from usage history
+                'avg_response_time_ms': None  # Would track response times
+            }
+
+        return stats
+
+    def update_threat_feeds(self, force: bool = False) -> Dict[str, bool]:
+        """
+        Update threat intelligence feeds
+
+        Args:
+            force: Force update even if not expired
+
+        Returns:
+            Dictionary of feed_name -> success status
+        """
+        if not self.feed_manager:
+            self.logger.warning("Threat feed manager not initialized")
+            return {}
+
+        self.logger.info("Updating threat intelligence feeds...")
+        results = self.feed_manager.update_feeds(force=force)
+
+        successful = sum(1 for v in results.values() if v)
+        total = len(results)
+        self.logger.info(f"Feed update complete: {successful}/{total} successful")
+
+        return results
+
+    def get_feed_statistics(self) -> Dict[str, Any]:
+        """Get statistics about threat feeds"""
+        if not self.feed_manager:
+            return {'error': 'Feed manager not initialized'}
+
+        return self.feed_manager.get_feed_stats()
+
+    def get_dnsbl_list(self) -> List[Dict[str, str]]:
+        """Get list of DNSBL servers being used"""
+        if not self.dnsbl_checker:
+            return []
+
+        return self.dnsbl_checker.get_dnsbl_list()
