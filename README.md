@@ -1,219 +1,343 @@
-# 🛡️ SOC Forge v2.0
+# SOC Forge v3.0
 
-**SOC Forge** is an advanced IP threat intelligence platform designed for Security Operations Center (SOC) analysts. It provides comprehensive IP analysis across multiple threat intelligence sources with an intuitive CLI interface, automated reporting, and advanced analytics capabilities.
+**SOC Forge** is an advanced IP threat intelligence platform designed for Security Operations Center (SOC) analysts and security professionals. It aggregates threat data from multiple sources including commercial APIs, open-source threat feeds, and DNS blacklists to provide comprehensive IP reputation analysis and actionable intelligence.
 
-## ✨ Key Features
+## Overview
 
-### 🔍 **Multi-Source Intelligence Analysis**
-- **VirusTotal** - Malware detection and reputation scoring
-- **AbuseIPDB** - Abuse reporting and confidence metrics
-- **GreyNoise** - Internet scanning behavior analysis
-- **ThreatFox** - IOC correlation and malware family attribution
-- **IPInfo** - Geolocation and network infrastructure analysis
+SOC Forge helps security teams quickly assess IP addresses by:
+- Querying multiple threat intelligence APIs in parallel
+- Correlating findings across 41+ curated threat intelligence feeds
+- Checking reputation against 46+ DNS blacklist (DNSBL) servers
+- Calculating weighted threat scores based on multi-source intelligence
+- Generating professional PDF reports in multiple languages (English, Portuguese, French)
+- Providing SIEM/Kibana query generation for security analytics
 
-### 🎯 **Advanced IP Processing**
-- **Smart IP Extraction** - Automatically detects IPs from any format
-- **Flexible Input Support** - Comma-separated, line-separated, with ports, prefixes, etc.
-- **Private IP Filtering** - Intelligent filtering of internal/private ranges
-- **Duplicate Detection** - Automatic deduplication with statistics
+## Features
 
-### 👨‍💻 **SOC Analyst-Focused Interface**
-- **Context-Aware CLI** - Human-readable interface with threat-focused workflows
-- **Real-Time Progress** - Live analysis progress with source-by-source updates  
-- **Risk Assessment** - Automated threat scoring and prioritization
-- **Actionable Insights** - Clear recommendations for each finding
+### Multi-Source API Integration
 
-### 📊 **Comprehensive Reporting**
-- **Executive Summaries** - High-level risk assessments for management
-- **Technical Reports** - Detailed findings for security teams
-- **KQL Query Generation** - Ready-to-use queries for SIEM platforms
-- **JSON Export** - Machine-readable results for automation
+SOC Forge integrates with 7 major threat intelligence APIs:
 
-## 🚀 Quick Start
+- **VirusTotal** - Malware scanning with 90+ antivirus engines, URL analysis, and community reputation scoring
+- **AbuseIPDB** - Community-driven IP abuse reporting with confidence scores and historical attack data
+- **GreyNoise** - Internet-wide scanning activity classification (benign vs malicious noise)
+- **AlienVault OTX** - Open Threat Exchange with community threat pulses and IOC correlation
+- **ThreatFox** - abuse.ch malware IOC database with malware family attribution
+- **Shodan** - Internet-connected device discovery, open port scanning, and service identification
+- **IPInfo** - Geolocation, ASN information, hosting provider data, and privacy detection (VPN/proxy/Tor)
+
+### Threat Feed Correlation
+
+SOC Forge monitors **41+ curated threat intelligence feeds** covering:
+
+**Malware & Botnets:**
+- Feodo Tracker (Botnet C2 servers)
+- URLhaus (Malware distribution sites)
+- Malware Bazaar (Malware samples and infrastructure)
+
+**Network Abuse:**
+- Spamhaus DROP/EDROP (Hijacked networks)
+- Emerging Threats Compromised IPs
+- DShield Top Attackers
+
+**Phishing & Fraud:**
+- OpenPhish feeds
+- PhishTank database
+
+**APT & Targeted Attacks:**
+- AlienVault reputation data
+- ThreatFox IOC database
+
+**Ransomware:**
+- Ransomware Tracker feeds
+- No More Ransom infrastructure lists
+
+All feeds are automatically updated and checked during IP analysis to identify matches in real-time.
+
+### DNS Blacklist (DNSBL) Checking
+
+SOC Forge queries **46+ DNS blacklist servers** including:
+
+**Spam & Email Reputation:**
+- Spamhaus (ZEN, SBL, XBL, PBL)
+- Barracuda Reputation Block List
+- SORBS (various categories)
+- SpamCop Blocking List
+- PSBL (Passive Spam Block List)
+
+**Malware & Exploit:**
+- abuse.ch servers
+- Malware domains blocklist
+
+**Brute Force & Attacks:**
+- BruteForceBlocker
+- DShield blocklist
+
+**Tor & Proxy:**
+- TornevAll Tor exit nodes
+- DroneBL proxy detection
+
+**Multi-Category:**
+- UCEPROTECT (Levels 1, 2, 3)
+- Invaluement lists
+
+Each DNSBL is queried with timeout handling and the results include both blacklist and whitelist status.
+
+### Threat Scoring & Analysis
+
+SOC Forge uses a weighted scoring algorithm (0-100) that considers:
+- VirusTotal malicious detections (20% weight)
+- AbuseIPDB confidence score (20% weight)
+- Threat feed matches (25% weight)
+- DNS blacklist presence (20% weight)
+- Additional intelligence sources (15% weight)
+
+Threat levels: **CRITICAL** (70-100), **HIGH** (50-69), **MEDIUM** (30-49), **LOW** (10-29), **MINIMAL** (0-9)
+
+### Professional PDF Reports
+
+Generate enterprise-grade threat intelligence reports with:
+- **Multi-language support** - English, Portuguese (Brazil), French
+- **Executive summary** - High-level risk assessment and key findings
+- **Technical analysis** - Detailed source-by-source breakdown
+- **DNSBL correlation** - Complete blacklist/whitelist status
+- **Threat feed matches** - All feeds where IP was found
+- **Network infrastructure** - ASN, hosting provider, geolocation
+- **Recommendations** - Risk-based action items
+- **Methodology** - Transparent scoring and analysis methods
+- **References** - All data sources cited
+
+### SIEM Integration
+
+Generate ready-to-use queries for:
+- **KQL (Kibana Query Language)** - Azure Sentinel, Elastic
+- **Lucene** - Elasticsearch, Kibana
+- **EQL (Event Query Language)** - Elastic Security
+- **Splunk SPL** - Splunk Enterprise
+
+Query types support source IP, destination IP, and bidirectional traffic analysis.
+
+## Installation
 
 ### Prerequisites
 - Python 3.8 or higher
 - Internet connection for API queries
-- API keys from threat intelligence sources
+- API keys from threat intelligence providers (free tiers available)
 
-### Installation
+### Setup
 
-1. **Clone and Setup**
+1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/soc-forge.git
 cd soc-forge
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+```
+
+2. Install dependencies:
+```bash
 pip install -r requirements.txt
 ```
 
-2. **Configure API Keys**
+3. Configure API keys:
 ```bash
 cp .env.example .env
-# Edit .env with your actual API keys
 ```
 
-3. **Run SOC Forge**
-```bash
-python soc_forge.py
-```
-
-## 🔧 Configuration
-
-### API Key Setup
-
-Edit the `.env` file with your API keys:
-
+Edit `.env` with your API keys:
 ```env
-# Required for malware analysis
-VIRUSTOTAL_API_KEY=your_virustotal_key_here
-
-# Required for abuse intelligence  
-ABUSEIPDB_API_KEY=your_abuseipdb_key_here
-
-# Required for geolocation data
-IPINFO_API_KEY=your_ipinfo_key_here
-
-# Required for IOC correlation
-THREATFOX_API_KEY=your_threatfox_key_here
-
-# Required for noise classification
-GREYNOISE_API_KEY=your_greynoise_key_here
+VIRUSTOTAL_API_KEY=your_key_here
+ABUSEIPDB_API_KEY=your_key_here
+IPINFO_API_KEY=your_key_here
+OTX_API_KEY=your_key_here
+GREYNOISE_API_KEY=your_key_here
+SHODAN_API_KEY=your_key_here
+THREATFOX_API_KEY=your_key_here
 ```
 
-### Get API Keys
-- [VirusTotal](https://www.virustotal.com/gui/join-us) - Free tier available
-- [AbuseIPDB](https://www.abuseipdb.com/account/api) - Free tier available  
-- [IPInfo](https://ipinfo.io/signup) - Free tier available
-- [ThreatFox](https://threatfox.abuse.ch/api/) - Free API
-- [GreyNoise](https://www.greynoise.io/viz/signup) - Free tier available
+### Getting API Keys
 
-## 📖 Usage Guide
+- **VirusTotal**: https://www.virustotal.com/gui/join-us (Free: 500 requests/day)
+- **AbuseIPDB**: https://www.abuseipdb.com/register (Free: 1000 requests/day)
+- **IPInfo**: https://ipinfo.io/signup (Free: 50,000 requests/month)
+- **AlienVault OTX**: https://otx.alienvault.com (Free with registration)
+- **GreyNoise**: https://www.greynoise.io/viz/signup (Free tier available)
+- **Shodan**: https://account.shodan.io/register (Free tier available)
+- **ThreatFox**: https://threatfox.abuse.ch/api/ (Free API, no key required)
 
-### Basic Analysis Workflow
+## Usage
 
-1. **Launch SOC Forge**
+### Launch Application
 ```bash
 python soc_forge.py
 ```
 
-2. **Input Target IPs**
-- Supports multiple formats automatically
-- Examples:
-  ```
-  8.8.8.8, 1.1.1.1, 208.67.222.222
-  192.168.1.1:80
-  IP: 10.0.0.1 (suspicious)
-  185.220.100.240
-  malicious-server.com 203.0.113.1
-  ```
+### Main Menu Options
 
-3. **Choose Analysis Type**
-- **Quick Assessment** - Fast threat triage
-- **Comprehensive Analysis** - Full multi-source analysis
-- **Malware Focus** - VirusTotal + ThreatFox analysis
-- **Network Intel** - Geographic and infrastructure analysis
+**[1] Threat Scan**
+- Perform comprehensive IP analysis across all sources
+- Real-time progress tracking
+- Interactive dashboard with color-coded results
+- Supports bulk analysis (multiple IPs)
 
-4. **Review Results**
-- Threat scoring and risk levels
-- Source-by-source findings
-- Actionable recommendations
+**[2] Generate SIEM / Kibana Queries**
+- Convert IPs to ready-to-use security queries
+- KQL, Lucene, EQL, and Splunk SPL formats
+- Source/Destination/Bidirectional patterns
 
-5. **Generate Reports**
-- Executive summaries for management
-- Technical reports for SOC teams
-- KQL queries for SIEM integration
+**[3] API Configuration & Health Check**
+- Verify API keys are valid
+- Check rate limits and quota
+- Test connectivity to all sources
 
-### Advanced Features
+**[4] Check Threat Feeds Status**
+- View all 41 threat intelligence feeds
+- See feed categories and descriptions
+- Check last update times
+- Manually update feeds
 
-#### KQL Query Generation
-Automatically generates security analytics queries:
-- Source IP monitoring
-- Destination IP analysis  
-- Network traffic patterns
-- Security event correlation
+**[5] Check DNS Blacklists (DNSBL)**
+- Standalone DNSBL checker
+- Query all 46 blacklist servers
+- Separate blacklist and whitelist results
+- Detailed categorization
 
-#### Threat Intelligence Correlation
-Cross-references findings across all sources:
-- Malware family attribution
-- Campaign tracking
-- Actor profiling
-- IOC timeline analysis
+**[6] List Available DNSBL Servers**
+- Display all configured DNSBL servers
+- Show server descriptions and categories
+- View server status
 
-## 🏗️ Architecture
+**[7] Generate PDF Report**
+- Select language (English/Portuguese/French)
+- Comprehensive threat intelligence report
+- Professional formatting with charts and tables
+- Includes all analysis data
+
+### Input Formats
+
+SOC Forge automatically extracts IPs from various formats:
+```
+8.8.8.8
+1.1.1.1, 8.8.8.8, 208.67.222.222
+192.168.1.1:8080
+IP: 10.0.0.1 (from logs)
+Suspicious connection from 203.0.113.45 detected
+```
+
+## Project Structure
 
 ```
 soc-forge/
-├── soc_forge.py              # Main application entry point
+├── soc_forge.py                    # Main application entry point
 ├── src/soc_forge/
-│   ├── apis/                 # Threat intelligence API clients
-│   │   ├── virustotal.py     
+│   ├── apis/                       # API client implementations
+│   │   ├── virustotal.py
 │   │   ├── abuseipdb.py
 │   │   ├── greynoise.py
-│   │   ├── threatfox.py
-│   │   └── ipinfo.py
-│   ├── cli/                  # User interface components
-│   │   └── interface.py      # SOC analyst-focused CLI
-│   ├── core/                 # Core analysis engine
-│   │   ├── analyzer.py       # Multi-source analysis orchestration
-│   │   └── ip_parser.py      # Advanced IP extraction & validation
-│   ├── reports/              # Report generation
-│   │   └── generator.py      # PDF, JSON report creation
-│   └── utils/                # Utilities
-│       └── kql_generator.py  # SIEM query generation
-├── outputs/                  # Generated reports and logs
-│   ├── reports/              
-│   └── logs/
-└── config/                   # Configuration files
+│   │   ├── ipinfo.py
+│   │   ├── otx.py
+│   │   ├── shodan.py
+│   │   └── threatfox.py
+│   ├── cli/                        # Command-line interface
+│   │   ├── interface.py            # Main menu and interactions
+│   │   └── dashboard.py            # Results dashboard
+│   ├── core/                       # Core analysis engine
+│   │   ├── analyzer.py             # Multi-source orchestration
+│   │   └── ip_parser.py            # IP extraction and validation
+│   ├── feeds/                      # Threat feeds and DNSBL
+│   │   ├── threat_feed_manager.py  # Feed download and correlation
+│   │   ├── feed_sources.py         # 41+ feed definitions
+│   │   └── dnsbl_checker.py        # 46+ DNSBL queries
+│   ├── reports/                    # Report generation
+│   │   ├── professional_report.py  # PDF report generator
+│   │   ├── translations.py         # Multi-language support
+│   │   └── report_sections.py      # Report components
+│   ├── utils/                      # Utilities
+│   │   ├── threat_scoring.py       # Weighted threat scoring
+│   │   └── kql_generator.py        # SIEM query generation
+│   └── queries/                    # Query templates
+├── outputs/
+│   ├── reports/                    # Generated PDF reports
+│   ├── logs/                       # Application logs
+│   └── feeds/                      # Cached threat feeds
+└── .env                            # API key configuration
 ```
 
-## 🔒 Security Considerations
+## Threat Scoring Methodology
 
-- **API Key Protection** - Keys are loaded from environment variables
-- **Rate Limiting** - Built-in respect for API rate limits
-- **Private IP Filtering** - Prevents accidental analysis of internal infrastructure
-- **Audit Logging** - Complete analysis activity logging
-- **Confidential Reports** - Generated reports marked as confidential
+SOC Forge calculates threat scores using a weighted algorithm:
 
-## 🤝 Contributing
+1. **VirusTotal Analysis (20%)**
+   - Malicious detections / Total engines ratio
+   - Reputation score
+   - Community votes
 
-We welcome contributions from the security community!
+2. **AbuseIPDB Assessment (20%)**
+   - Abuse confidence percentage
+   - Number of reports
+   - Report recency
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)  
-5. Open a Pull Request
+3. **Threat Feed Correlation (25%)**
+   - Number of feed matches
+   - Feed category severity
+   - Feed reliability weighting
 
-### Development Setup
-```bash
-# Install development dependencies
-pip install -r requirements.txt
+4. **DNS Blacklist Status (20%)**
+   - Number of blacklist entries
+   - Blacklist category (spam vs malware)
+   - Whitelist presence consideration
 
-# Run tests
-pytest tests/
+5. **Additional Intelligence (15%)**
+   - GreyNoise classification
+   - Shodan exposure analysis
+   - Network infrastructure reputation
 
-# Code formatting
-black src/
-flake8 src/
+Final scores range from 0-100 and map to threat levels for actionable decision-making.
+
+## Security & Privacy
+
+- **API keys** are stored in environment variables, never in code
+- **Private IP filtering** prevents analysis of internal infrastructure
+- **Rate limiting** respects API provider quotas
+- **Audit logging** tracks all analysis activities
+- **Offline operation** supported for cached threat feeds
+- **No data retention** - analysis results are not stored externally
+
+## Requirements
+
+```
+Python 3.8+
+requests
+python-dotenv
+rich (CLI interface)
+reportlab (PDF generation)
+dnspython (DNSBL queries)
 ```
 
-## 📄 License
+See `requirements.txt` for complete dependency list.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## License
 
-## 🙏 Acknowledgments
+This project is licensed under the MIT License - see LICENSE file for details.
 
-- **Threat Intelligence Providers** - VirusTotal, AbuseIPDB, GreyNoise, ThreatFox, IPInfo
-- **SOC Community** - Built by SOC analysts for SOC analysts
-- **Open Source Libraries** - Rich CLI framework, ReportLab PDF generation
+## Acknowledgments
 
-## 📞 Support
+**Threat Intelligence Providers:**
+- VirusTotal, AbuseIPDB, GreyNoise, AlienVault OTX, abuse.ch (ThreatFox, Feodo, URLhaus), Shodan, IPInfo
 
-- **Issues** - [GitHub Issues](https://github.com/yourusername/soc-forge/issues)
-- **Documentation** - [Wiki](https://github.com/yourusername/soc-forge/wiki)
-- **Security** - Report security issues privately via email
+**Threat Feed Sources:**
+- Spamhaus, Emerging Threats, DShield, OpenPhish, PhishTank, Ransomware Tracker, and many more
+
+**DNSBL Operators:**
+- Spamhaus, Barracuda, SORBS, SpamCop, UCEPROTECT, and community-operated lists
+
+**Open Source:**
+- Rich (CLI framework), ReportLab (PDF generation), dnspython (DNS queries)
+
+## Support
+
+- **Issues**: Report bugs and feature requests via GitHub Issues
+- **Documentation**: See wiki for detailed guides
+- **Community**: Built by SOC analysts for SOC analysts
 
 ---
 
-*SOC Forge v2.0 - Empowering SOC analysts with advanced threat intelligence*
+**SOC Forge v3.0** - Advanced IP Threat Intelligence Platform
