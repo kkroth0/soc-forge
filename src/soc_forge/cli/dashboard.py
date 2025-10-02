@@ -37,20 +37,8 @@ class ThreatIntelligenceDashboard:
         # Display main header
         self._display_header(ip, analysis_results)
 
-        # Display reputation summary
+        # Display reputation summary with geographic info side by side
         self._display_reputation_summary(analysis_results)
-
-        # Display geographic and network information
-        self._display_geographic_network_info(analysis_results)
-
-        # Display open ports and services (Shodan-like info)
-        self._display_open_ports_services(analysis_results)
-
-        # Display VirusTotal key vendor analysis
-        self._display_virustotal_vendor_analysis(analysis_results)
-
-        # Display AlienVault OTX threat pulses
-        self._display_otx_threat_pulses(analysis_results)
 
         # Display threat feeds results
         self._display_threat_feeds_results(analysis_results)
@@ -138,8 +126,72 @@ class ThreatIntelligenceDashboard:
         )
         self.console.print(header)
 
+        # Create layout for side-by-side display - 3 columns
+        layout = Layout()
+        layout.split_column(
+            Layout(name="top_row"),
+            Layout(name="middle_row"),
+            Layout(name="bottom_row")
+        )
+
+        # Top row: VirusTotal | Geographic | Shodan Ports
+        layout["top_row"].split_row(
+            Layout(name="virustotal_vendors", ratio=2),
+            Layout(name="geographic", ratio=1),
+            Layout(name="ports_services", ratio=1)
+        )
+
+        # Middle row: Reputation Feeds | Shodan Banners
+        layout["middle_row"].split_row(
+            Layout(name="reputation", ratio=2),
+            Layout(name="shodan_banners", ratio=1)
+        )
+
+        # Bottom row: OTX Pulses (full width) - no need to create sublayout
+
+        # Create VirusTotal vendor table first
+        vt_data = analysis_results.get('virustotal', {})
+        vendor_table = Table(box=box.SIMPLE, padding=(0, 1), show_header=True, title="VirusTotal Vendors")
+        vendor_table.add_column("Vendor", style="bold white", width=12)
+        vendor_table.add_column("Category", width=12)
+        vendor_table.add_column("Signature / Result", width=30)
+
+        if vt_data.get('found'):
+            engines_detected = vt_data.get('engines_detected', [])
+            engines_clean = vt_data.get('engines_clean', [])
+            key_vendors = ['Fortinet', 'Kaspersky', 'Sophos', 'Microsoft', 'TrendMicro']
+
+            for vendor in key_vendors:
+                found = False
+                for engine in engines_detected:
+                    if vendor.lower() in engine.get('engine', '').lower():
+                        category = engine.get('category', 'Unknown')
+                        result = engine.get('result', 'Unknown')
+                        if category == 'malicious':
+                            category_display = "[red]Malicious[/red]"
+                        elif category == 'suspicious':
+                            category_display = "[yellow]Suspicious[/yellow]"
+                        else:
+                            category_display = category.title()
+                        vendor_table.add_row(vendor, category_display, result)
+                        found = True
+                        break
+
+                if not found:
+                    for engine in engines_clean[:5]:
+                        if vendor.lower() in engine.get('engine', '').lower():
+                            vendor_table.add_row(vendor, "[green]Clean[/green]", "No Threats Detected")
+                            found = True
+                            break
+
+                if not found:
+                    vendor_table.add_row(vendor, "[dim]Unknown[/dim]", "--")
+        else:
+            for vendor in ['Fortinet', 'Kaspersky', 'Sophos', 'Microsoft', 'TrendMicro']:
+                vendor_table.add_row(vendor, "[dim]Unknown[/dim]", "--")
+
         # Create reputation table
-        reputation_table = Table(box=box.SIMPLE, padding=(0, 1))
+        reputation_table = Table(box=box.SIMPLE, padding=(0, 1), show_header=True, title="Feed Sources")
         reputation_table.add_column("Feed", style="bold white", width=12)
         reputation_table.add_column("Verdict", width=12)
         reputation_table.add_column("Confidence", width=10, justify="center")
@@ -296,7 +348,202 @@ class ThreatIntelligenceDashboard:
 
         reputation_table.add_row("AlienVault", verdict, str(confidence) if confidence != "--" else confidence, last_seen)
 
-        self.console.print(reputation_table)
+        # Create geographic table
+        geo_table = Table(box=box.SIMPLE, padding=(0, 1), show_header=True, title="Geographic Info")
+        geo_table.add_column("Field", style="bold white", width=15)
+        geo_table.add_column("Value", width=30)
+
+        # Get geographic info from IPInfo or VirusTotal
+        ipinfo_data = analysis_results.get('ipinfo', {})
+        vt_data = analysis_results.get('virustotal', {})
+
+        # Country
+        country = "Unknown"
+        if ipinfo_data.get('found') and ipinfo_data.get('country'):
+            country = ipinfo_data['country']
+        elif vt_data.get('found') and vt_data.get('country'):
+            country = vt_data['country']
+        geo_table.add_row("Country", country)
+
+        # City
+        city = "Unknown"
+        if ipinfo_data.get('found') and ipinfo_data.get('city'):
+            city = ipinfo_data['city']
+        geo_table.add_row("City", city)
+
+        # ASN / Organization
+        asn_org = "Unknown"
+        if ipinfo_data.get('found'):
+            if ipinfo_data.get('asn_name'):
+                asn_org = f"AS{ipinfo_data.get('asn', '')} - {ipinfo_data['asn_name']}"
+            elif ipinfo_data.get('organization'):
+                asn_org = ipinfo_data['organization']
+        elif vt_data.get('found'):
+            if vt_data.get('as_owner'):
+                asn_org = f"AS{vt_data.get('asn', '')} - {vt_data['as_owner']}"
+        geo_table.add_row("ASN / Org", asn_org)
+
+        # ISP
+        isp = "Unknown"
+        if ipinfo_data.get('found') and ipinfo_data.get('organization'):
+            isp = ipinfo_data['organization']
+        geo_table.add_row("ISP", isp)
+
+        # Create ports/services summary table
+        ports_table = Table(box=box.SIMPLE, padding=(0, 1), show_header=True, title="Open Ports")
+        ports_table.add_column("Port", width=8, justify="center")
+        ports_table.add_column("Protocol", width=8, justify="center")
+
+        # Get Shodan data for ports
+        shodan_data = analysis_results.get('shodan', {})
+        additional_info_parts = []
+
+        if shodan_data.get('found') and shodan_data.get('services'):
+            # Add port rows (limit to 5 for compact view)
+            for service in shodan_data['services'][:5]:
+                port = str(service.get('port', ''))
+                protocol = service.get('protocol', 'tcp').upper()
+                ports_table.add_row(port, protocol)
+
+            # Build additional info
+            if shodan_data.get('hostnames'):
+                hostnames = ', '.join(shodan_data['hostnames'][:2])  # Show first 2
+                additional_info_parts.append(f"[cyan]Hostnames:[/cyan] {hostnames}")
+
+            if shodan_data.get('tags'):
+                tags = ', '.join(shodan_data['tags'][:3])  # Show first 3 tags
+                additional_info_parts.append(f"[cyan]Tags:[/cyan] {tags}")
+
+            if shodan_data.get('vulnerabilities'):
+                vuln_count = len(shodan_data['vulnerabilities'])
+                additional_info_parts.append(f"[red]Vulnerabilities:[/red] {vuln_count}")
+        else:
+            ports_table.add_row("--", "--")
+
+        # Combine ports table and additional info
+        ports_content = ports_table
+        if additional_info_parts:
+            additional_info_text = "\n".join(additional_info_parts)
+            from rich.console import Group
+            ports_content = Group(ports_table, Text("\n"), Text.from_markup(additional_info_text))
+
+        # Create OTX pulses summary
+        otx_data = analysis_results.get('otx', {})
+        otx_parts = []
+
+        if otx_data.get('found'):
+            pulse_count = otx_data.get('pulse_count', 0)
+            threat_score = otx_data.get('threat_score', 0)
+
+            # Summary line
+            summary_text = f"[bold]Pulses Found:[/bold] {pulse_count} | [bold]Threat Score:[/bold] "
+            if threat_score > 70:
+                summary_text += f"[red]{threat_score}[/red]"
+            elif threat_score > 30:
+                summary_text += f"[yellow]{threat_score}[/yellow]"
+            else:
+                summary_text += f"[green]{threat_score}[/green]"
+            otx_parts.append(Text.from_markup(summary_text))
+
+            # Malware families (truncated)
+            malware_families = otx_data.get('malware_families', [])
+            if malware_families:
+                families_text = ', '.join(malware_families[:10])
+                if len(malware_families) > 10:
+                    families_text += "..."
+                otx_parts.append(Text.from_markup(f"[bold red]Malware Families:[/bold red] {families_text}"))
+
+            # MITRE ATT&CK (truncated)
+            attack_ids = otx_data.get('attack_ids', [])
+            if attack_ids:
+                attack_text = ', '.join(attack_ids[:10])
+                if len(attack_ids) > 10:
+                    attack_text += "..."
+                otx_parts.append(Text.from_markup(f"[bold orange1]MITRE ATT&CK:[/bold orange1] {attack_text}"))
+
+            # Targeted industries
+            industries = otx_data.get('industries', [])
+            if industries:
+                industries_text = ', '.join(industries[:5])
+                otx_parts.append(Text.from_markup(f"[bold cyan]Targeted Industries:[/bold cyan] {industries_text}"))
+
+            # Recent pulses table
+            pulses = otx_data.get('pulses', [])
+            if pulses:
+                otx_parts.append(Text("\nRecent Threat Pulses:", style="bold"))
+                pulse_table = Table(box=box.SIMPLE, padding=(0, 1), show_header=True)
+                pulse_table.add_column("Date", style="dim", width=12)
+                pulse_table.add_column("Pulse Name", style="bold white", width=30)
+                pulse_table.add_column("Author", width=12)
+                pulse_table.add_column("TLP", width=8)
+
+                for pulse in pulses[:3]:  # Show first 3
+                    date = pulse.get('created', '')[:10] if pulse.get('created') else '--'
+                    name = pulse.get('name', 'Unknown')[:30]
+                    author = pulse.get('author', 'Unknown')[:12]
+                    tlp = pulse.get('tlp', 'white').upper()
+
+                    if tlp == "RED":
+                        tlp_display = f"[red]{tlp}[/red]"
+                    elif tlp == "AMBER":
+                        tlp_display = f"[yellow]{tlp}[/yellow]"
+                    elif tlp == "GREEN":
+                        tlp_display = f"[green]{tlp}[/green]"
+                    else:
+                        tlp_display = f"[dim]{tlp}[/dim]"
+
+                    pulse_table.add_row(date, name, author, tlp_display)
+
+                otx_parts.append(pulse_table)
+
+            # Associated tags (truncated)
+            tags = otx_data.get('tags', [])
+            if tags:
+                tags_text = ', '.join(tags[:15])
+                if len(tags) > 15:
+                    tags_text += "..."
+                otx_parts.append(Text.from_markup(f"\n[bold]Associated Tags:[/bold] {tags_text}"))
+        else:
+            otx_parts.append(Text.from_markup("[dim]No AlienVault OTX data available[/dim]"))
+
+        otx_content = Group(*otx_parts) if otx_parts else Text.from_markup("[dim]No OTX data[/dim]")
+
+        # Create Shodan banners content
+        banner_parts = []
+        if shodan_data.get('found') and shodan_data.get('services'):
+            banners_shown = 0
+            for service in shodan_data['services']:
+                banner = service.get('banner', '').strip()
+                if banner and banners_shown < 3:  # Show up to 3 banners
+                    banners_shown += 1
+                    port = service.get('port', 'Unknown')
+                    protocol = service.get('protocol', 'tcp').upper()
+                    ssl_enabled = service.get('ssl', False)
+                    ssl_indicator = " [SSL/TLS]" if ssl_enabled else ""
+                    product = service.get('product', '')
+
+                    # Truncate banner to fit
+                    if len(banner) > 200:
+                        banner = banner[:200] + "..."
+
+                    banner_text = f"[cyan]Port {port}/{protocol}{ssl_indicator}[/cyan] - {product}\n[dim]{banner}[/dim]"
+                    banner_parts.append(Panel(banner_text, title=f"Banner #{banners_shown}", border_style="blue", expand=False))
+
+        if not banner_parts:
+            banner_parts.append(Text.from_markup("[dim]No banner data available[/dim]"))
+
+        banners_content = Group(*banner_parts)
+
+        # Add tables to layout
+        layout["virustotal_vendors"].update(Panel(vendor_table, border_style="red", title="🛡️ VirusTotal"))
+        layout["geographic"].update(Panel(geo_table, border_style="cyan", title="🌍 Geographic"))
+        layout["ports_services"].update(Panel(ports_content, border_style="magenta", title="🔍 Shodan Ports"))
+        layout["reputation"].update(Panel(reputation_table, border_style="blue", title="📊 Reputation"))
+        layout["shodan_banners"].update(Panel(banners_content, border_style="magenta", title="🔍 Shodan Banners"))
+        layout["bottom_row"].update(Panel(otx_content, border_style="yellow", title="👁️ AlienVault OTX"))
+
+        # Print the layout
+        self.console.print(layout)
 
     def _display_geographic_network_info(self, analysis_results: Dict[str, Any]) -> None:
         """Display geographic and network information"""
@@ -410,16 +657,9 @@ class ThreatIntelligenceDashboard:
             if additional_info:
                 self.console.print(f"\nAdditional Info: {' | '.join(additional_info)}")
 
-            # Display detailed service banners if available
-            if shodan_data.get('services'):
-                self._display_service_banners(shodan_data['services'])
-
             # Display vulnerability details if available
             if shodan_data.get('vulnerabilities') and len(shodan_data['vulnerabilities']) > 0:
                 self._display_vulnerabilities(shodan_data['vulnerabilities'])
-
-            # Display organization and network details
-            self._display_shodan_network_details(shodan_data)
 
     def _display_service_banners(self, services: List[Dict[str, Any]]) -> None:
         """Display detailed service banners from Shodan"""

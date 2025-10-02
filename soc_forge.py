@@ -167,10 +167,7 @@ class SOCForgeApp:
         # Store IPs for analysis
         target_ips = parsing_result.valid_ips
 
-        # Show progress message
-        self.interface.console.print("\nProceeding with Threat Intelligence Collection...")
-
-        # Run dashboard analysis
+        # Run dashboard analysis with animated progress
         self.interface.run_dashboard_analysis(target_ips, self.analyzer)
 
         # Ask if user wants to continue

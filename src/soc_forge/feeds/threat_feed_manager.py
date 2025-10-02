@@ -76,10 +76,11 @@ class ThreatFeed:
 class ThreatFeedManager:
     """Manages multiple threat intelligence feeds"""
 
-    def __init__(self, cache_dir: str = ".feed_cache"):
+    def __init__(self, cache_dir: str = ".feed_cache", progress_callback=None):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
         self.feeds: Dict[str, ThreatFeed] = {}
+        self.progress_callback = progress_callback
         self._initialize_feeds()
 
     def _initialize_feeds(self) -> None:
@@ -433,6 +434,10 @@ class ThreatFeedManager:
             # Get cache file modification time
             mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
             feed.last_updated = mtime
+
+            # Call progress callback if provided
+            if self.progress_callback:
+                self.progress_callback(feed.name, len(indicators), feed.category)
 
             logger.info(f"Loaded {feed.name} from cache: {len(indicators)} indicators")
             return True

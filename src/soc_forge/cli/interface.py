@@ -801,10 +801,113 @@ TARGETS FOR ANALYSIS
 
     def run_dashboard_analysis(self, ips: list, analyzer) -> None:
         """Run comprehensive analysis and display dashboard directly"""
-        available_sources = list(analyzer.clients.keys())
-        self.display_analysis_progress(ips, available_sources)
+        import logging
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
+        available_sources = list(analyzer.clients.keys())
+
+        # Temporarily suppress logging to console during analysis
+        feed_logger = logging.getLogger('soc_forge.feeds.threat_feed_manager')
+        analyzer_logger = logging.getLogger('soc_forge.analyzer')
+
+        # Store original levels
+        original_feed_level = feed_logger.level
+        original_analyzer_level = analyzer_logger.level
+
+        # Set to ERROR to suppress INFO/WARNING
+        feed_logger.setLevel(logging.ERROR)
+        analyzer_logger.setLevel(logging.ERROR)
+
+        # Map sources to display names
+        source_display = {
+            'virustotal': '🛡️  VirusTotal',
+            'abuseipdb': '🚫 AbuseIPDB',
+            'shodan': '🔍 Shodan',
+            'otx': '👁️  AlienVault OTX',
+            'greynoise': '📡 GreyNoise',
+            'ipinfo': '🌍 IPInfo',
+            'threatfox': '🦊 ThreatFox'
+        }
+
+        # Create API progress display
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]{task.description}"),
+            BarColumn(complete_style="green", finished_style="bold green"),
+            TaskProgressColumn(),
+            console=self.console,
+            transient=True
+        ) as progress:
+
+            # Task 1: API Analysis
+            api_task = progress.add_task(
+                f"[cyan]Querying threat intelligence APIs...",
+                total=len(ips) * len(available_sources)
+            )
+
+            # Simulate API progress with source names (slower)
+            for ip in ips:
+                for source in available_sources:
+                    display_name = source_display.get(source, source.upper())
+                    progress.update(api_task, advance=1, description=f"[cyan]🔄 {display_name}")
+                    time.sleep(0.35)  # Slower for better visibility
+
+            # Mark as complete
+            progress.update(api_task, completed=len(ips) * len(available_sources), description="[green]✓ API queries complete")
+            time.sleep(0.3)
+
+        self.console.print("[bold green]✓ API queries complete![/bold green]\n")
+
+        # Simple threat feeds progress display
+        if hasattr(analyzer, 'feed_manager') and analyzer.feed_manager:
+            feed_count = [0]
+            total_iocs = [0]
+
+            # Category color mapping
+            category_colors = {
+                'malware': 'red',
+                'botnet': 'red',
+                'c2': 'orange1',
+                'phishing': 'yellow',
+                'spam': 'yellow',
+                'exploit': 'red',
+                'attack': 'red',
+                'proxy': 'cyan',
+                'general': 'blue',
+                'reputation': 'magenta'
+            }
+
+            def feed_callback(feed_name, ioc_count, category='general'):
+                feed_count[0] += 1
+                total_iocs[0] += ioc_count
+
+                # Get category color
+                cat_color = category_colors.get(category, 'blue')
+                category_tag = f"[{cat_color}]{category}[/{cat_color}]"
+
+                # Print feed with category tag on the right
+                ioc_text = f"({ioc_count:,} IOCs)"
+                # Calculate padding to align categories on the right
+                name_and_ioc = f"  [dim]→[/dim] [magenta]{feed_name}[/magenta] [dim]{ioc_text}[/dim]"
+                padding = max(0, 70 - len(feed_name) - len(ioc_text))
+
+                self.console.print(f"{name_and_ioc}{' ' * padding}[{cat_color}]#{category}[/{cat_color}]")
+
+            analyzer.feed_manager.progress_callback = feed_callback
+            self.console.print("[bold magenta]📋 Loading Threat Feeds...[/bold magenta]")
+
+        # Run actual analysis
         results = analyzer.analyze_multiple_ips(ips)
+
+        # Show completion
+        if hasattr(analyzer, 'feed_manager') and analyzer.feed_manager:
+            self.console.print(f"\n[bold green]✓ Loaded {feed_count[0]} threat feeds with {total_iocs[0]:,} total IOCs![/bold green]\n")
+
+        # Restore original log levels
+        feed_logger.setLevel(original_feed_level)
+        analyzer_logger.setLevel(original_analyzer_level)
+
+        self.console.print("[bold green]✓ Analysis complete![/bold green]\n")
 
         # Display full dashboard for each IP
         for ip in ips:
@@ -812,28 +915,162 @@ TARGETS FOR ANALYSIS
                 self.display_threat_intelligence_dashboard(ip, results[ip].data)
     
     def display_analysis_progress(self, ips: List[str], sources: List[str]):
-        """Display real-time analysis progress"""
-        total_operations = len(ips) * len(sources)
+        """Display real-time analysis progress with animations"""
+        from rich.live import Live
+        from rich.table import Table
+        from rich.panel import Panel
+        from rich.align import Align
 
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            console=self.console,
-            transient=False
-        ) as progress:
+        # Map sources to display names with emojis
+        source_display = {
+            'virustotal': '🛡️  VirusTotal',
+            'abuseipdb': '🚫 AbuseIPDB',
+            'shodan': '🔍 Shodan',
+            'otx': '👁️  AlienVault OTX',
+            'greynoise': '📡 GreyNoise',
+            'ipinfo': '🌍 IPInfo',
+            'threatfox': '🦊 ThreatFox',
+            'threat_feeds': '📋 Threat Feeds',
+            'dnsbl': '🔍 DNSBL'
+        }
 
-            main_task = progress.add_task("Analysis Status:", total=total_operations)
+        # Create status tracking
+        source_status = {source: 'pending' for source in sources}
 
+        # Spinner frames for custom animation
+        spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+        current_frame = 0
+
+        def create_progress_display():
+            nonlocal current_frame
+
+            # Create header with animated spinner
+            spinner_char = spinner_frames[current_frame % len(spinner_frames)]
+            header = Text(f"{spinner_char} Collecting Threat Intelligence...", style="bold cyan")
+
+            # Create progress table
+            table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2), border_style="dim")
+            table.add_column("Source", style="bold white", width=30)
+            table.add_column("Status", width=25, justify="left")
+
+            for source in sources:
+                display_name = source_display.get(source, source.upper())
+                status = source_status[source]
+
+                if status == 'pending':
+                    status_text = "[dim]⏳ Waiting...[/dim]"
+                elif status == 'running':
+                    status_text = f"[yellow]{spinner_char} Querying...[/yellow]"
+                elif status == 'complete':
+                    status_text = "[green]✓ Complete[/green]"
+                elif status == 'error':
+                    status_text = "[red]✗ Failed[/red]"
+                else:
+                    status_text = "[dim]...[/dim]"
+
+                table.add_row(display_name, status_text)
+
+            from rich.console import Group
+            content = Group(
+                Align.center(header),
+                Text(""),
+                table
+            )
+
+            return Panel(
+                content,
+                title="[bold yellow]⚡ Analysis in Progress[/bold yellow]",
+                border_style="yellow",
+                box=box.HEAVY,
+                padding=(1, 2)
+            )
+
+        # Run progress with live updates (slower animation, transient so it disappears)
+        with Live(create_progress_display(), console=self.console, refresh_per_second=4, transient=True) as live:
             for ip in ips:
                 for source in sources:
-                    progress.update(main_task, advance=1)
-                    time.sleep(0.1)  # Simulate API calls
+                    # Update status to running
+                    source_status[source] = 'running'
+                    current_frame += 1
+                    live.update(create_progress_display())
+                    time.sleep(0.4)  # Slower animation
 
-            progress.update(main_task, description="Analysis Status:")
-            time.sleep(0.3)
+                    # Update status to complete
+                    source_status[source] = 'complete'
+                    current_frame += 1
+                    live.update(create_progress_display())
+                    time.sleep(0.2)  # Slower animation
 
-        self.console.print("-------------------------------------------------------------------------------")
-    
+            # Final update
+            time.sleep(0.5)
+
+        # Show completion message
+        self.console.print("\n[bold green]✓ Threat intelligence collection complete![/bold green]\n")
+
+    def create_feed_progress_callback(self):
+        """Create a callback function for threat feed loading with live display"""
+        from rich.live import Live
+        from rich.table import Table
+        from rich.panel import Panel
+        from rich.align import Align
+        import threading
+
+        spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+        loaded_feeds = {}
+        live_display = None
+        frame_counter = [0]
+        lock = threading.Lock()
+
+        def create_feed_display():
+            # Animated spinner
+            spinner_char = spinner_frames[frame_counter[0] % len(spinner_frames)]
+            header = Text(f"{spinner_char} Loading Threat Intelligence Feeds...", style="bold magenta")
+
+            # Create table for loaded feeds
+            table = Table(box=box.SIMPLE, show_header=True, padding=(0, 1), border_style="dim")
+            table.add_column("Feed", style="bold white", width=45)
+            table.add_column("IOCs", width=12, justify="right")
+            table.add_column("", width=10)
+
+            for feed_name, ioc_count in loaded_feeds.items():
+                ioc_text = f"[cyan]{ioc_count:,}[/cyan]" if ioc_count > 0 else "[dim]0[/dim]"
+                table.add_row(feed_name, ioc_text, "[green]✓[/green]")
+
+            from rich.console import Group
+            content = Group(
+                Align.center(header),
+                Text(""),
+                table if loaded_feeds else Text("[dim]Initializing...[/dim]", style="dim", justify="center")
+            )
+
+            return Panel(
+                content,
+                title="[bold cyan]📋 Threat Feed Manager[/bold cyan]",
+                border_style="cyan",
+                box=box.HEAVY,
+                padding=(1, 2)
+            )
+
+        def feed_callback(feed_name, ioc_count):
+            with lock:
+                loaded_feeds[feed_name] = ioc_count
+                frame_counter[0] += 1
+                if live_display:
+                    live_display.update(create_feed_display())
+
+        def start_display():
+            nonlocal live_display
+            live_display = Live(create_feed_display(), console=self.console, refresh_per_second=4, transient=False)
+            live_display.start()
+            return live_display
+
+        def stop_display():
+            if live_display:
+                live_display.stop()
+                self.console.print("[bold green]✓ Threat feeds loaded successfully![/bold green]\n")
+
+        return feed_callback, start_display, stop_display
+
     def display_threat_summary(self, results):
         """Display high-level threat assessment summary"""
         total_ips = len(results)
