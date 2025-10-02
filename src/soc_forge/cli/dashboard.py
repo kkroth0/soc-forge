@@ -118,6 +118,8 @@ class ThreatIntelligenceDashboard:
 
     def _display_reputation_summary(self, analysis_results: Dict[str, Any]) -> None:
         """Display reputation summary from all feeds"""
+        from rich.console import Group
+
         self.console.print("\n")
         header = Panel(
             "[bold white]Multi-Source Threat Intelligence Reputation Analysis[/bold white]",
@@ -424,14 +426,18 @@ class ThreatIntelligenceDashboard:
         ports_content = ports_table
         if additional_info_parts:
             additional_info_text = "\n".join(additional_info_parts)
-            from rich.console import Group
             ports_content = Group(ports_table, Text("\n"), Text.from_markup(additional_info_text))
 
         # Create OTX pulses summary
         otx_data = analysis_results.get('otx', {})
         otx_parts = []
 
-        if otx_data.get('found'):
+        # Debug: Check if otx data exists
+        if not otx_data:
+            otx_parts.append(Text.from_markup("[yellow]⚠ No OTX data in analysis results[/yellow]"))
+        elif 'error' in otx_data:
+            otx_parts.append(Text.from_markup(f"[red]⚠ OTX Error:[/red] [dim]{otx_data.get('error', 'Unknown error')}[/dim]"))
+        elif otx_data.get('found'):
             pulse_count = otx_data.get('pulse_count', 0)
             threat_score = otx_data.get('threat_score', 0)
 
@@ -504,9 +510,14 @@ class ThreatIntelligenceDashboard:
                     tags_text += "..."
                 otx_parts.append(Text.from_markup(f"\n[bold]Associated Tags:[/bold] {tags_text}"))
         else:
-            otx_parts.append(Text.from_markup("[dim]No AlienVault OTX data available[/dim]"))
+            # OTX data exists but found=False (no threats detected)
+            otx_parts.append(Text.from_markup("[green]✓ No threats found in AlienVault OTX[/green]"))
 
-        otx_content = Group(*otx_parts) if otx_parts else Text.from_markup("[dim]No OTX data[/dim]")
+        # Ensure we always have content to display
+        if not otx_parts:
+            otx_parts.append(Text.from_markup("[dim]No OTX data[/dim]"))
+
+        otx_content = Group(*otx_parts)
 
         # Create Shodan banners content
         banner_parts = []
@@ -529,6 +540,7 @@ class ThreatIntelligenceDashboard:
                     banner_text = f"[cyan]Port {port}/{protocol}{ssl_indicator}[/cyan] - {product}\n[dim]{banner}[/dim]"
                     banner_parts.append(Panel(banner_text, title=f"Banner #{banners_shown}", border_style="blue", expand=False))
 
+        # Ensure we always have content
         if not banner_parts:
             banner_parts.append(Text.from_markup("[dim]No banner data available[/dim]"))
 
