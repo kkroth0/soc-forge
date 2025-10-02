@@ -1,5 +1,6 @@
 # ⚒️ SOC Forge 
-
+<img width="1322" height="255" alt="image" src="https://github.com/user-attachments/assets/83fcf51a-bf7d-4c71-964c-af9b1dbd15cc" />
+<br>
 SOC Forge is an IP threat intelligence platform for SOC analysts, aggregating multiple threat feeds, DNSBLs, and APIs to provide actionable IP reputation analysis and professional PDF reports.
 
 ## Overview
