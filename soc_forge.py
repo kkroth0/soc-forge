@@ -68,7 +68,8 @@ class SOCForgeApp:
             'threatfox': 'THREATFOX_API_KEY',
             'greynoise': 'GREYNOISE_API_KEY',
             'shodan': 'SHODAN_API_KEY',
-            'otx': 'OTX_API_KEY'
+            'otx': 'OTX_API_KEY',
+            'ransomwarelive': 'RANSOMWARELIVE_API_KEY'
         }
         
         for service, env_var in key_mappings.items():
@@ -133,8 +134,12 @@ class SOCForgeApp:
                         # Generate PDF Report
                         self.interface.generate_pdf_report(self.analyzer)
 
+                    elif choice == "8":
+                        # Ransomware Intelligence
+                        self.interface.ransomware_intelligence_menu(self.analyzer)
+
                     else:
-                        self.interface.console.print("[red]Invalid option. Please select 0-7.[/red]")
+                        self.interface.console.print("[red]Invalid option. Please select 0-8.[/red]")
                 
                 except KeyboardInterrupt:
                     self.interface.console.print("\n[yellow]Operation cancelled[/yellow]")

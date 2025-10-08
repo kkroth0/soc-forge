@@ -17,6 +17,7 @@ from ..apis.threatfox import ThreatFoxClient
 from ..apis.greynoise import GreyNoiseClient
 from ..apis.shodan import ShodanClient
 from ..apis.otx import OTXClient
+from ..apis.ransomwarelive import RansomwareLiveClient
 from ..apis.base import APIResult
 from ..utils.threat_scoring import ThreatScorer
 from ..feeds import ThreatFeedManager, DNSBLChecker
@@ -65,6 +66,9 @@ class IPAnalyzer:
 
         if api_keys.get('otx'):
             self.clients['otx'] = OTXClient(api_keys['otx'])
+
+        # Ransomware.live doesn't require API key for basic usage
+        self.clients['ransomwarelive'] = RansomwareLiveClient(api_keys.get('ransomwarelive', ''))
 
         # Initialize threat feed manager and DNSBL checker
         self.feed_manager = None

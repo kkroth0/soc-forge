@@ -15,7 +15,7 @@ SOC Forge helps security teams quickly assess IP addresses by:
 
 ### Multi-Source API Integration
 
-SOC Forge integrates with 7 major threat intelligence APIs:
+SOC Forge integrates with 8 major threat intelligence APIs:
 
 - **VirusTotal** - Malware scanning with 90+ antivirus engines, URL analysis, and community reputation scoring
 - **AbuseIPDB** - Community-driven IP abuse reporting with confidence scores and historical attack data
@@ -24,6 +24,7 @@ SOC Forge integrates with 7 major threat intelligence APIs:
 - **ThreatFox** (This is getting some bugs, sorry) - abuse.ch malware IOC database with malware family attribution
 - **Shodan** - Internet-connected device discovery, open port scanning, and service identification
 - **IPInfo** - Geolocation, ASN information, hosting provider data, and privacy detection (VPN/proxy/Tor)
+- **Ransomware.live** - Track ransomware groups, victims, and IOCs across global ransomware campaigns
 
 ### Threat Feed Correlation
 SOC Forge monitors **41+ curated threat intelligence feeds** covering:
@@ -32,7 +33,7 @@ SOC Forge monitors **41+ curated threat intelligence feeds** covering:
 - **Network Abuse:** Spamhaus DROP/EDROP (Hijacked networks) / Emerging Threats Compromised IPs / DShield Top Attackers <br>
 - **Phishing & Fraud:** OpenPhish feeds / PhishTank database <br>
 - **APT & Targeted Attacks:** / AlienVault reputation data / ThreatFox IOC database <br>
-- **Ransomware:** (in the future I think to get data from ramsomware.live) / Ransomware Tracker feeds / No More Ransom infrastructure lists
+- **Ransomware:** Ransomware.live API integration / Ransomware Tracker feeds / No More Ransom infrastructure lists
 
 All feeds are automatically updated and checked during IP analysis to identify matches in real-time.
 
@@ -130,6 +131,30 @@ THREATFOX_API_KEY=your_key_here
 ```bash
 python soc_forge.py
 ```
+
+### Ransomware Intelligence Features
+
+SOC Forge now includes comprehensive ransomware intelligence via ransomware.live integration:
+
+**Check IOCs Against Ransomware Activity**
+- Search if an IP, domain, or hash is associated with ransomware groups
+- Get threat level assessment (CRITICAL, HIGH, MEDIUM, LOW, CLEAN)
+- View associated ransomware groups and victims
+
+**Search Ransomware Groups**
+- List all known ransomware groups
+- Get detailed intelligence on specific groups
+- View victims and attack patterns
+
+**Track Victims**
+- Search victims by organization name or keyword
+- Filter by sector or country
+- View recent ransomware activity and disclosures
+
+**Group Intelligence**
+- Detailed profiles of ransomware groups
+- YARA rules for detection
+- Historical victim data and attack timelines
 ## Security & Privacy
 
 - **API keys** are stored in environment variables, never in code
